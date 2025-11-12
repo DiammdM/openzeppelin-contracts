@@ -59,6 +59,11 @@ library Time {
      * supported.
      */
     type Delay is uint112;
+    // unint112 contains three parts, including:
+    // 1. unint48 effect: the timepoint when the delay takes effect（新延迟什么时候生效，也就是预约生效时间）
+    // 2. unint32 valueBefore: the current delay value (现在的延迟值)
+    // 3. unint32 valueAfter: the new delay value (未来将要生效的延迟值)
+    // 高 → 低 (uint112(effect) << 64) | (uint112(valueBefore) << 32) | uint112(valueAfter);
 
     /**
      * @dev Wrap a duration into a Delay to add the one-step "update in the future" feature

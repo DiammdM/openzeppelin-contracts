@@ -17,8 +17,11 @@ import {Context} from "../../utils/Context.sol";
  * functions, and ideally only used in `external` functions. See {restricted}.
  */
 abstract contract AccessManaged is Context, IAccessManaged {
+
+    // 当前使用权限控制的合约（AccessManager）
     address private _authority;
 
+    // 标识是否正在消费一个“预定的操作”
     bool private _consumingSchedule;
 
     /**
@@ -69,8 +72,11 @@ abstract contract AccessManaged is Context, IAccessManaged {
             revert AccessManagedUnauthorized(caller);
         }
         if (newAuthority.code.length == 0) {
+            // 合约.code.length == 0 说明不是合约，只是一个普通账户（EOA）
+            // newAuthority 必须是个合约 
             revert AccessManagedInvalidAuthority(newAuthority);
         }
+
         _setAuthority(newAuthority);
     }
 
@@ -93,6 +99,8 @@ abstract contract AccessManaged is Context, IAccessManaged {
      * is less than 4 bytes long.
      */
     function _checkCanCall(address caller, bytes calldata data) internal virtual {
+        // address(this) 表示继承AceessManaged的合约地址
+        // 调用authority()也就是AccessManger实例 的 canCall 方法，检查 caller 是否有权限调用address(this) 合约的 data[0:4] 方法选择器
         (bool immediate, uint32 delay) = AuthorityUtils.canCallWithDelay(
             authority(),
             caller,
@@ -100,11 +108,20 @@ abstract contract AccessManaged is Context, IAccessManaged {
             bytes4(data[0:4])
         );
         if (!immediate) {
+            // 不可以立即执行
+
             if (delay > 0) {
+                // 表示调用者有权限，但必须通过延迟调度 (Timelock) 执行。
+
+                // 标记当前执行上下文为“调度任务执行中”，以便在后续调用中识别
                 _consumingSchedule = true;
+
+                // 把这个地址当成实现了 IAccessManager 接口的合约, 调用 consumeScheduledOp 方法，消费这个预定的操作
+                // 前面delay只是判断是否有延时条件，这里才是真正验证消费这个操作
                 IAccessManager(authority()).consumeScheduledOp(caller, data);
                 _consumingSchedule = false;
             } else {
+                // 表示没有任何执行权限，也不允许延时执行。
                 revert AccessManagedUnauthorized(caller);
             }
         }

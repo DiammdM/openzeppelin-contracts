@@ -75,19 +75,29 @@ library Address {
      *
      * - the calling contract must have an ETH balance of at least `value`.
      * - the called Solidity function must be `payable`.
+     * - 作用: ✅ 安全地向目标合约 (target) 发起一次带 ETH 转账的函数调用（call），并妥善处理所有可能的异常。
+     * - params: target：目标合约地址
+     *             data：调用数据（函数选择器 + 编码后的参数）
+     *            value: 随调用一起转的 ETH 数量
      */
     function functionCallWithValue(address target, bytes memory data, uint256 value) internal returns (bytes memory) {
+        // 由于Address是个libaray，所以address(this)就是当前调用该library的合约地址
         if (address(this).balance < value) {
+            // 检查余额是否足够
             revert Errors.InsufficientBalance(address(this).balance, value);
         }
         bool success = LowLevelCall.callNoReturn(target, value, data);
         if (success && (LowLevelCall.returnDataSize() > 0 || target.code.length > 0)) {
+            // 返回数据不为空，或者目标合约确实有代码，说明调用成功
             return LowLevelCall.returnData();
         } else if (success) {
+            // 调用成功，但目标合约没有代码，抛出异常
             revert AddressEmptyCode(target);
         } else if (LowLevelCall.returnDataSize() > 0) {
+            // 调用失败且有返回数据，抛出原始错误原因。
             LowLevelCall.bubbleRevert();
         } else {
+            // 调用失败且没有返回数据，抛出通用调用失败错误。
             revert Errors.FailedCall();
         }
     }
