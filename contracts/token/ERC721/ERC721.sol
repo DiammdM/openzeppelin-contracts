@@ -25,12 +25,17 @@ abstract contract ERC721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Er
     // Token symbol
     string private _symbol;
 
+    // 每个nft的拥有者
     mapping(uint256 tokenId => address) private _owners;
 
+    // 每个地址拥有的nft数量
     mapping(address owner => uint256) private _balances;
 
+    // 记录某一个具体 nft 被授权给谁操作
     mapping(uint256 tokenId => address) private _tokenApprovals;
 
+    // 记录 owner 授权 operator 可以管理 owner 的所有nft
+    // OpenSea / Blur 等市场一般都依赖这个授权
     mapping(address owner => mapping(address operator => bool)) private _operatorApprovals;
 
     /**
@@ -73,10 +78,15 @@ abstract contract ERC721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Er
     }
 
     /// @inheritdoc IERC721Metadata
+    /**
+     * 作用：根据tokenId 返回 NFT 元数据的 URL
+     * 默认行为：tokenURI = baseURI + tokenId
+     */
     function tokenURI(uint256 tokenId) public view virtual returns (string memory) {
         _requireOwned(tokenId);
 
         string memory baseURI = _baseURI();
+        // 如果你不 override _baseURI()，默认 tokenURI() 返回空
         return bytes(baseURI).length > 0 ? string.concat(baseURI, tokenId.toString()) : "";
     }
 
@@ -84,6 +94,9 @@ abstract contract ERC721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Er
      * @dev Base URI for computing {tokenURI}. If set, the resulting URI for each
      * token will be the concatenation of the `baseURI` and the `tokenId`. Empty
      * by default, can be overridden in child contracts.
+     * _baseURI() 用来生成 tokenURI 的基础地址
+     * tokenURI 用来告诉钱包、前端：这个NFT的运输机（metadata JSON）放在哪里？
+     * 默认为空，等待开发者去继承实现
      */
     function _baseURI() internal view virtual returns (string memory) {
         return "";
@@ -132,6 +145,9 @@ abstract contract ERC721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Er
     /// @inheritdoc IERC721
     function safeTransferFrom(address from, address to, uint256 tokenId, bytes memory data) public virtual {
         transferFrom(from, to, tokenId);
+        // 检查接收方是否能接收 NFT
+        // to 可以是 EOA，不检查
+        // to 如果是合约地址，必须实现onERC721Received接口
         ERC721Utils.checkOnERC721Received(_msgSender(), from, to, tokenId, data);
     }
 
@@ -162,6 +178,8 @@ abstract contract ERC721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Er
      * assumption.
      */
     function _isAuthorized(address owner, address spender, uint256 tokenId) internal view virtual returns (bool) {
+        // 不能是 0 地址
+        // （spender 就是 拥有者）或者（spender 是 owner 的全局 operator）或者（spender 被 owner 针对该 token 单独 approve）
         return
             spender != address(0) &&
             (owner == spender || isApprovedForAll(owner, spender) || _getApproved(tokenId) == spender);
@@ -212,18 +230,27 @@ abstract contract ERC721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Er
      * Emits a {Transfer} event.
      *
      * NOTE: If overriding this function in a way that tracks balances, see also {_increaseBalance}.
+     * 用户(auth)把 nft(tokenId)转移给 某用户(to)
+     * 调用方：
+     *  - transferFrom：to（用户），auth（msg.sender）
+     *  - _transfer：to（用户），auth（address(0)） 内部调用转账
+     *  - _mint：to（用户），auth（address(0)） 铸币nft
+     *  - _burn：to（address(0)）, auth(address(0))  烧币nft
      */
     function _update(address to, uint256 tokenId, address auth) internal virtual returns (address) {
+        // 获取当前nft的拥有者
         address from = _ownerOf(tokenId);
 
         // Perform (optional) operator check
         if (auth != address(0)) {
+            // 检查 auth是否有权限 操作此 NFT
             _checkAuthorized(from, auth, tokenId);
         }
 
         // Execute the update
         if (from != address(0)) {
             // Clear approval. No need to re-authorize or emit the Approval event
+            // 清除授权，且不需要发送事件
             _approve(address(0), tokenId, address(0), false);
 
             unchecked {
@@ -253,6 +280,8 @@ abstract contract ERC721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Er
      *
      * - `tokenId` must not exist.
      * - `to` cannot be the zero address.
+     *
+     * 作用：为一个从未存在过的 tokenId 设置 owner = to，并增加 to 的 balance
      *
      * Emits a {Transfer} event.
      */
@@ -286,6 +315,8 @@ abstract contract ERC721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Er
      */
     function _safeMint(address to, uint256 tokenId, bytes memory data) internal virtual {
         _mint(to, tokenId);
+        // 如果to 是EOA, 返回ok
+        // 如果to 是合约，必须实现 onERC721Received
         ERC721Utils.checkOnERC721Received(_msgSender(), address(0), to, tokenId, data);
     }
 
@@ -316,6 +347,10 @@ abstract contract ERC721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Er
      * - `to` cannot be the zero address.
      * - `tokenId` token must be owned by `from`.
      *
+     * 保留 _transfer() 和 _safeTransfer() 是为了：提供“内部转账接口”，让开发者在合约内部执行转账，而不需要权限检查。
+     * 方便扩展、复用、兼容旧写法。
+     * transferFrom / safeTransferFrom —— 外部用户调用
+     * _transfer / _safeTransfer —— 内部合约调用（不需要权限检查）
      * Emits a {Transfer} event.
      */
     function _transfer(address from, address to, uint256 tokenId) internal {
@@ -379,13 +414,19 @@ abstract contract ERC721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Er
     /**
      * @dev Variant of `_approve` with an optional flag to enable or disable the {Approval} event. The event is not
      * emitted in the context of transfers.
+     * 作用：给某个地址 to 授权，使其可以操作（transfer）这个指定 tokenId。
+     * 参数：auth：谁尝试授权（调用者）,一般是_msgsender()
      */
     function _approve(address to, uint256 tokenId, address auth, bool emitEvent) internal virtual {
         // Avoid reading the owner unless necessary
+        // auth = address(0),表示内部调用，不需要检查权限
         if (emitEvent || auth != address(0)) {
             address owner = _requireOwned(tokenId);
 
             // We do not use _isAuthorized because single-token approvals should not be able to call approve
+            // auth != address(0)：需要检查权限
+            // owner != auth：并且 auth 不是 owner
+            // !isApprovedForAll(owner, auth): 并且 auth 也不是 owner 的 operator
             if (auth != address(0) && owner != auth && !isApprovedForAll(owner, auth)) {
                 revert ERC721InvalidApprover(auth);
             }
@@ -419,6 +460,7 @@ abstract contract ERC721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Er
      * Returns the owner.
      *
      * Overrides to ownership logic should be done to {_ownerOf}.
+     * 检查并获取nft的拥有者(owner)
      */
     function _requireOwned(uint256 tokenId) internal view returns (address) {
         address owner = _ownerOf(tokenId);

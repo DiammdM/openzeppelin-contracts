@@ -14,9 +14,11 @@ import {IERC165} from "../../../interfaces/IERC165.sol";
 abstract contract ERC721URIStorage is IERC4906, ERC721 {
     // Interface ID as defined in ERC-4906. This does not correspond to a traditional interface ID as ERC-4906 only
     // defines events and does not include any external function.
+    // 声明 ERC-4906 的 “接口标识符”
     bytes4 private constant ERC4906_INTERFACE_ID = bytes4(0x49064906);
 
     // Optional mapping for token URIs
+    // tokenId 与 元数据(metadata) 的映射
     mapping(uint256 tokenId => string) private _tokenURIs;
 
     /// @inheritdoc IERC165
@@ -26,6 +28,7 @@ abstract contract ERC721URIStorage is IERC4906, ERC721 {
 
     /// @inheritdoc IERC721Metadata
     function tokenURI(uint256 tokenId) public view virtual override returns (string memory) {
+        // 检查是否存在此NFT
         _requireOwned(tokenId);
 
         string memory _tokenURI = _tokenURIs[tokenId];

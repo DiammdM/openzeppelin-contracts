@@ -138,6 +138,7 @@ abstract contract ERC20 is Context, IERC20, IERC20Metadata, IERC20Errors {
      * - `from` must have a balance of at least `value`.
      * - the caller must have allowance for ``from``'s tokens of at least
      * `value`.
+     * 当前用户替某用户（from）转账给用户（to），金额为 value
      */
     function transferFrom(address from, address to, uint256 value) public virtual returns (bool) {
         address spender = _msgSender();
@@ -172,9 +173,15 @@ abstract contract ERC20 is Context, IERC20, IERC20Metadata, IERC20Errors {
      * this function.
      *
      * Emits a {Transfer} event.
+     *
+     * all the below func use _update
+     * 1. nomal transfer: from -> to
+     * 2. mint(增发)：from address(0) -> to
+     * 3. burn(销毁)：from -> address(0)
      */
     function _update(address from, address to, uint256 value) internal virtual {
         if (from == address(0)) {
+            // from == address(0) means mint
             // Overflow check required: The rest of the code assumes that totalSupply never overflows
             _totalSupply += value;
         } else {
@@ -189,6 +196,7 @@ abstract contract ERC20 is Context, IERC20, IERC20Metadata, IERC20Errors {
         }
 
         if (to == address(0)) {
+            // to == address(0) means burn
             unchecked {
                 // Overflow not possible: value <= totalSupply or value <= fromBalance <= totalSupply.
                 _totalSupply -= value;
@@ -269,6 +277,7 @@ abstract contract ERC20 is Context, IERC20, IERC20Metadata, IERC20Errors {
      * ```
      *
      * Requirements are the same as {_approve}.
+     * 授权 spender 可以使用 value 数量的代币
      */
     function _approve(address owner, address spender, uint256 value, bool emitEvent) internal virtual {
         if (owner == address(0)) {
@@ -290,10 +299,12 @@ abstract contract ERC20 is Context, IERC20, IERC20Metadata, IERC20Errors {
      * Revert if not enough allowance is available.
      *
      * Does not emit an {Approval} event.
+     * 花费授权额度
      */
     function _spendAllowance(address owner, address spender, uint256 value) internal virtual {
         uint256 currentAllowance = allowance(owner, spender);
         if (currentAllowance < type(uint256).max) {
+            // 检查是否是无限授权（infinite allowance）
             if (currentAllowance < value) {
                 revert ERC20InsufficientAllowance(spender, currentAllowance, value);
             }
