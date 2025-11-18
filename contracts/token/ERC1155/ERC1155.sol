@@ -20,11 +20,21 @@ abstract contract ERC1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, IER
     using Arrays for uint256[];
     using Arrays for address[];
 
+    // tokenId 同一个 ERC1155 合约里不同 token 的编号。
+    // 一种同质化代币，使用一个同一个tokenId（当然可以有多种同质化代币，每种类型各一个）
+    // 每个NFT,都需要一个tokenId
+
+    // 每个 tokenId 在每个账户上的余额（数量）
+    // 第一层 tokenId, 第二层 地址，第三层 数量
+    // 如果是NFT, value 要么，不存在（=0），要么，存在（=1）
     mapping(uint256 id => mapping(address account => uint256)) private _balances;
 
+    // 某个用户(owner) 授予“操作员(operator)” 的批量授权信息
+    // 授权某个用户所有的 tokenId 的权限
     mapping(address account => mapping(address operator => bool)) private _operatorApprovals;
 
     // Used as the URI for all token types by relying on ID substitution, e.g. https://token-cdn-domain/{id}.json
+    // 所有 tokenId 共用的 URI 模板字符串
     string private _uri;
 
     /**
@@ -96,6 +106,7 @@ abstract contract ERC1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, IER
     }
 
     /// @inheritdoc IERC1155
+    // 单个token转账
     function safeTransferFrom(address from, address to, uint256 id, uint256 value, bytes memory data) public virtual {
         address sender = _msgSender();
         if (from != sender && !isApprovedForAll(from, sender)) {
@@ -105,6 +116,7 @@ abstract contract ERC1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, IER
     }
 
     /// @inheritdoc IERC1155
+    // 批量token转账
     function safeBatchTransferFrom(
         address from,
         address to,
@@ -132,6 +144,7 @@ abstract contract ERC1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, IER
      * - `ids` and `values` must have the same length.
      *
      * NOTE: The ERC-1155 acceptance check is not performed in this function. See {_updateWithAcceptanceCheck} instead.
+     * 转账具体逻辑
      */
     function _update(address from, address to, uint256[] memory ids, uint256[] memory values) internal virtual {
         if (ids.length != values.length) {
@@ -186,13 +199,22 @@ abstract contract ERC1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, IER
         bytes memory data
     ) internal virtual {
         _update(from, to, ids, values);
+
+        // 不是 burn 的情况下
         if (to != address(0)) {
             address operator = _msgSender();
             if (ids.length == 1) {
+                // 单个token转账的情况
+
                 uint256 id = ids.unsafeMemoryAccess(0);
                 uint256 value = values.unsafeMemoryAccess(0);
+
+                // 检查是否为合约，合约是否满足实现onERC1155Received接口
                 ERC1155Utils.checkOnERC1155Received(operator, from, to, id, value, data);
             } else {
+                // 多个token批量转账的情况
+
+                // 检查是否为合约，合约是否满足实现onERC1155BatchReceived接口
                 ERC1155Utils.checkOnERC1155BatchReceived(operator, from, to, ids, values, data);
             }
         }
@@ -364,6 +386,8 @@ abstract contract ERC1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, IER
 
     /**
      * @dev Creates an array in memory with only one value for each of the elements provided.
+     *
+     * 作用：把两个单个元素（element1、element2）包装成长度=1 的两个数组，并且非常节省gas
      */
     function _asSingletonArrays(
         uint256 element1,
